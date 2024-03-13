@@ -15,12 +15,12 @@ class Metrics
     int y_reg_pointer;
     explicit Metrics();
     ~Metrics();
-    void update_Energy(double d, double elapsedTime);
-    void update_VisibilityError(float error);
+    //void update_Energy(double d, double elapsedTime);
+    //void update_VisibilityError(float error);
     void update_FlickerError();
     void increment_N();
-    double getEnergy();
-    double getVisibilityError();
+    //double getEnergy();
+    //double getVisibilityError();
     double getFlickerError();
     void update_u_registry(int value);
     void update_y_registry(float value);
@@ -63,15 +63,6 @@ inline float Metrics::get_f_k()
 
 }
 
-inline void Metrics::update_Energy(double d, double elapsedTime)
-{
-    Energy += LED_MAX_POWER * d * elapsedTime;
-}
-
-inline void Metrics::update_VisibilityError(float error)
-{
-    VisibilityError = ((float)1 - 1/N)*VisibilityError + max(0,error)/N;
-}
 
 inline void Metrics::update_FlickerError()
 {
@@ -83,15 +74,6 @@ inline void Metrics::increment_N()
     N +=1.0;
 }
 
-inline double Metrics::getEnergy()
-{
-    return Energy;
-}
-
-inline double Metrics::getVisibilityError()
-{
-    return VisibilityError;
-}
 
 inline double Metrics::getFlickerError()
 {

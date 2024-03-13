@@ -47,6 +47,9 @@ int idoficina = 1;
 // Oficina [2] Node 18 COM 12
 // Oficina [3] Node D1 COM 13
 
+// States
+boolean newref = false;
+
 //the interrupt service routine
 void read_interrupt(uint gpio, uint32_t events) {
   data_available = true;
@@ -66,6 +69,8 @@ int newdutycycle;
 int iluminaire;
 int currentdutycycle;
 int newreference;
+
+
 
 float voltsLux() {
   int read_adc;
@@ -124,7 +129,18 @@ void setup() {
 }
 
 void loop() {
-  
+
+   // If I change the reference
+  /* 
+  if (newref == true) {
+    Serial.println("New reference");
+    float Knew = 3;
+    float bnew = 2; 
+    my_pid.bumpless_transfer(Knew, bnew, xref, lux);
+
+  }
+  */
+
   // Read orders from serial monitor
   /*
   recvWithStartEndMarkers();
@@ -136,24 +152,27 @@ void loop() {
    if (Serial.available() > 0) {
       // Read the integer from the Serial Monitor
       xref = Serial.parseFloat(); // Leer el comando desde el monitor serial
+      newref = true;
         //Transformar voltaje in a lux 
 	while (Serial.available() > 0) {
        Serial.read();
 }
+ 
 }
   // Transformar voltaje leido a Lux
   lux = voltsLux();
-   // Calcular H(x) como funcion del voltaje y lux
   // H_x = voltage / lux;
+   // Calcular H(x) como funcion del voltaje y lux
 
   // Compute PID Control (desired, real)
-  
+
   float v = my_pid.compute_control(xref, lux);
   float u = my_pid.saturateOutput(v);  // U es el dutycycle de salida, este entra al bloque G y la salida del sistema es lux
   int pwm = (int)u;
   analogWrite(LED_PIN, pwm);
-  my_pid.updateIntegral(xref, lux, v, u);  //Integral, acumulo el error y reemplazo lux por luxold
 
+  my_pid.update_integral(xref, lux, u, v);  //Integral, acumulo el error y reemplazo lux por luxold
+  
   /*
   // Send data via CAN BUS
   if (millis() >= time_to_write) {
