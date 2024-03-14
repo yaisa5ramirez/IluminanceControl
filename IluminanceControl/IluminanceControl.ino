@@ -60,16 +60,8 @@ pidcontroller my_pid {0.01, 7, 0.98, 0.04, 0, 3};
 
 
 // Info of serial
-
-const byte numChars = 32;
-char recievedCommand[numChars];
-char tempChars[numChars];  // temporary array for use when parsing
+readSerial leerserial {};
 boolean newData = false;
-int newdutycycle;
-int iluminaire;
-int currentdutycycle;
-int newreference;
-
 
 
 float voltsLux() {
@@ -102,16 +94,7 @@ void setup() {
   analogWriteFreq(60000);       //30KHz
   analogWriteRange(DAC_RANGE);  //100% duty cycle
   Serial.begin(115200);
-  //CAN BUS
-  flash_get_unique_id(this_pico_flash_id);
-  node_address = this_pico_flash_id[idoficina];
-  can0.reset();
-  can0.setBitrate(CAN_1000KBPS);
-  can0.setNormalMode();
-  gpio_set_irq_enabled_with_callback(
-  interruptPin, GPIO_IRQ_EDGE_FALL,
-  true, &read_interrupt);
-  time_to_write = millis() + write_delay;
+  
 
   // Select what office to control
   Serial.println(office);
@@ -142,13 +125,13 @@ void loop() {
   */
 
   // Read orders from serial monitor
-  /*
-  recvWithStartEndMarkers();
+  newData = leerserial.recvData(newData);
   if (newData == true) {
-    parseData();
+    leerserial.parseData();
     newData = false;
   }
-  */
+  
+  /*
    if (Serial.available() > 0) {
       // Read the integer from the Serial Monitor
       xref = Serial.parseFloat(); // Leer el comando desde el monitor serial
@@ -157,8 +140,10 @@ void loop() {
 	while (Serial.available() > 0) {
        Serial.read();
 }
+
  
 }
+*/
   // Transformar voltaje leido a Lux
   lux = voltsLux();
   // H_x = voltage / lux;
@@ -173,38 +158,6 @@ void loop() {
 
   my_pid.update_integral(xref, lux, u, v);  //Integral, acumulo el error y reemplazo lux por luxold
   
-  /*
-  // Send data via CAN BUS
-  if (millis() >= time_to_write) {
-    canMsgTx.can_id = node_address;
-    canMsgTx.can_dlc = 8;
-    unsigned long div = counterTx * 10;
-    for (int i = 0; i < 8; i++)
-      canMsgTx.data[7 - i] = '0' + ((div /= 10) % 10);
-    err = can0.sendMessage(&canMsgTx);
-    //Serial.print("Sending message ");
-    //Serial.print(counterTx);
-    //Serial.print(" from node ");
-    //Serial.println(node_address, HEX);
-    counterTx++;
-    time_to_write = millis() + write_delay;
-  }
-
-  // Recieve data from CAN BUS
-
-  if (data_available) {
-    can0.readMessage(&canMsgRx);
-    //Serial.print("Received message number ");
-    //Serial.print(counterRx++);
-    //Serial.print(" from node ");
-    //Serial.print(canMsgRx.can_id, HEX);
-    //Serial.print(" : ");
-    for (int i = 0; i < canMsgRx.can_dlc; i++)
-      //Serial.print((char)canMsgRx.data[i]);
-    //Serial.println(" ");
-    data_available = false;
-  }
-  */
   
   Serial.print(45);    //the first variable for plotting
   Serial.print(",");  //seperator
@@ -213,5 +166,6 @@ void loop() {
   Serial.print(lux);
   Serial.print(",");  //seperator
   Serial.println(0);    //the first variable for plotting
+  
 
 }
