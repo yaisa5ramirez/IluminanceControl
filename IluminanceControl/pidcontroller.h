@@ -6,7 +6,7 @@
 class pidcontroller {
   float I, D, K, Ti, Td, Tt, b, h, y_old, N;
 public:
-  bool antiwindup = true;
+  bool antiwindup = false;
   explicit pidcontroller(float _h, float _K = 1, float b_ = 1, float Ti_ = 1, float Td_ = 0, float Tt_ = 1, float N_ = 10);  //constructor
   ~pidcontroller(){};                                                                                                        //destructor
   float compute_control(float r, float y);                                                                                   //function

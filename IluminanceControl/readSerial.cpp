@@ -1,6 +1,7 @@
 #include "readSerial.h"
 #include <arduino.h>
 extern float xref;
+extern bool newref;
 readSerial::readSerial() {}
 
 
@@ -67,7 +68,9 @@ void readSerial::parseData() {
       luminaire = command2;
       command3 = String(tempChars[3]) + String(tempChars[4]);
       xref = command3.toFloat();
-      if ((xref > 0) && (xref < 40)) resp = "ack";
+      if ((xref > 0) && (xref < 40)){ 
+      resp = "ack";
+      newref = true;}
       else resp = "err";
       break;
 

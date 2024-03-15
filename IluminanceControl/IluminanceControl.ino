@@ -26,21 +26,14 @@ float H_x = 0;
 float u_ff = 0;
 int counter = 0;
 float xref = 0;  // Entrada serial monitor.
+float xold = 0;  // Entrada serial monitor.
 
 // Variables controlador
 float Td{ 0 };
 float N{ 3 };
+float Knew{ 3 };
+float bnew{ 3 };
 
-// CAN BUS Communication
-uint8_t this_pico_flash_id[8], node_address;
-struct can_frame canMsgTx, canMsgRx;
-unsigned long counterTx{ 0 }, counterRx{ 0 };
-MCP2515::ERROR err;
-unsigned long time_to_write;
-unsigned long write_delay{ 1000 };
-const byte interruptPin{ 20 };
-volatile byte data_available{ false };
-MCP2515 can0{ spi0, 17, 19, 16, 18, 10000000 };
 int idoficina = 1;
 
 //Oficina [1] Node 60 COM 16
@@ -50,19 +43,17 @@ int idoficina = 1;
 // States
 boolean newref = false;
 
-//the interrupt service routine
-void read_interrupt(uint gpio, uint32_t events) {
-  data_available = true;
-}
-
-// Default, solo lo declaro 
-pidcontroller my_pid {0.01, 7, 0.98, 0.04, 0, 3};
-
+// Default, solo lo    h,   K,  b,  Ti,  Td, Tt   }
+pidcontroller my_pid{ 0.01, 100, 1, 0.5, 0, 0.1 };
+//                         100, 2, 0.5, 0, 0.1
+// pidcontroller my_pid{ 0.01, 100, 1, 0.5, 0, 0.1 }; BAJADA BUENO
+// B no uede ser mayor a 2
 
 // Info of serial
-readSerial leerserial {};
+readSerial leerserial{};
 boolean newData = false;
 
+int contador = 0;
 
 float voltsLux() {
   int read_adc;
@@ -76,53 +67,46 @@ float voltsLux() {
   return lux;
 }
 
-/*
-  void feedforward(float Xref) {
-    float counter_ff;
-    u_ff = Xref / G;
-    counter_ff = 4096 * u_ff;
-    Serial.println(counter_ff);
-    analogWrite(LED_PIN, int(counter_ff));  // set led PWM
-  }
-  */
 
 //Circuito 1  // bSet es Para evitar que la luz haga flickering
 
 float r{ 0.0 };
 void setup() {
   analogReadResolution(12);
-  analogWriteFreq(60000);       //30KHz
+  analogWriteFreq(60000);       //60KHz
   analogWriteRange(DAC_RANGE);  //100% duty cycle
-  Serial.begin(115200);
-  
+  Serial.begin(9600);
+
 
   // Select what office to control
   Serial.println(office);
   if (office == 1) {
     Serial.print("OFICINA 1");
-    pidcontroller my_pid {0.01, 7, 0.98, 0.04, 0, 3};
-    }  //h, K, bSet, Ti, Td, N}
-    else if (office == 2) {
-    pidcontroller my_pid {0.01, 7, 0.98, 0.04, 0, 3};
+    pidcontroller my_pid{ 0.01, 7, 0.98, 0.04, 0, 3 };
   }  //h, K, bSet, Ti, Td, N}
-    else if (office == 3) {
-    pidcontroller my_pid {0.01, 7, 0.98, 0.04, 0, 3};
+  else if (office == 2) {
+    pidcontroller my_pid{ 0.01, 7, 0.98, 0.04, 0, 3 };
   }  //h, K, bSet, Ti, Td, N}
- 
+  else if (office == 3) {
+    pidcontroller my_pid{ 0.01, 7, 0.98, 0.04, 0, 3 };
+  }  //h, K, bSet, Ti, Td, N}
 }
 
 void loop() {
 
-   // If I change the reference
-  /* 
+  // If I change the reference. 
   if (newref == true) {
-    Serial.println("New reference");
-    float Knew = 3;
-    float bnew = 2; 
+    float dif = xref -xold;
+    if (dif < 0.0) { //subiendo
+      Knew = 90;
+      bnew = 2;
+    } else {
+      Knew = 100;
+      bnew = 2;
+    }
     my_pid.bumpless_transfer(Knew, bnew, xref, lux);
-
+    newref = false;
   }
-  */
 
   // Read orders from serial monitor
   newData = leerserial.recvData(newData);
@@ -130,24 +114,11 @@ void loop() {
     leerserial.parseData();
     newData = false;
   }
-  
-  /*
-   if (Serial.available() > 0) {
-      // Read the integer from the Serial Monitor
-      xref = Serial.parseFloat(); // Leer el comando desde el monitor serial
-      newref = true;
-        //Transformar voltaje in a lux 
-	while (Serial.available() > 0) {
-       Serial.read();
-}
 
- 
-}
-*/
   // Transformar voltaje leido a Lux
   lux = voltsLux();
   // H_x = voltage / lux;
-   // Calcular H(x) como funcion del voltaje y lux
+  // Calcular H(x) como funcion del voltaje y lux
 
   // Compute PID Control (desired, real)
 
@@ -157,7 +128,7 @@ void loop() {
   analogWrite(LED_PIN, pwm);
 
   my_pid.update_integral(xref, lux, u, v);  //Integral, acumulo el error y reemplazo lux por luxold
-  
+
   
   Serial.print(45);    //the first variable for plotting
   Serial.print(",");  //seperator
@@ -166,6 +137,12 @@ void loop() {
   Serial.print(lux);
   Serial.print(",");  //seperator
   Serial.println(0);    //the first variable for plotting
-  
+  xold = xref;
 
+  if (contador == 60000) {
+    xref = 50;
+    newref = true;
+  }
+  
+  contador += 1;
 }
