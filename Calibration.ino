@@ -7,10 +7,9 @@ struct can_frame canMsgTx, canMsgRx;
 unsigned long counterTx{ 0 }, counterRx{ 0 };
 MCP2515::ERROR err;
 unsigned long time_to_write;
-unsigned long write_delay{ 1000 };
+unsigned long write_delay{ 5000 };
 const byte interruptPin{ 20 };
 volatile byte data_available{ false };
-//MCP2515 can0 {spi0, 1, 3, 0, 2, 10000000};
 MCP2515 can0{ spi0, 17, 19, 16, 18, 10000000 };
 
 void checkCanError(){
@@ -138,7 +137,6 @@ int findPosition(uint8_t arr[], uint8_t target) {  // Find my indice in the list
 
 
 void SendData(unsigned int node_address, float message, int who, char instruc1, char instruc2, char instruc3) {
-  //if (millis() >= time_to_write) {  
   canMsgTx.can_id = node_address;
   canMsgTx.can_dlc = 8;
 
@@ -158,8 +156,7 @@ void SendData(unsigned int node_address, float message, int who, char instruc1, 
   Serial.print(instruc1);
   Serial.print(instruc2);
   Serial.println(instruc3);
-  //}
-  //time_to_write = millis() + write_delay;
+  
 }
 
 
@@ -177,20 +174,20 @@ void recieveData(bool *allfinished, bool *ack, bool *off, int *ids, int myId, in
     for (int i = 0; i < 4; i++) {
       bytePointer[i] = canMsgRx.data[i];  // Copy each byte from the CAN message data to the float
     }
-    Serial.print("I recieved from  ");
-    Serial.print(recievedId);
-    Serial.print(" the message ");
-    Serial.print(message);
-    Serial.print(" with the instruction ");
-    Serial.println(instruction);
+    //Serial.print("I recieved from  ");
+    //Serial.print(recievedId);
+    //Serial.print(" the message ");
+    //Serial.print(message);
+    //Serial.print(" with the instruction ");
+    //Serial.println(instruction);
     uint8_t sender = canMsgRx.can_id;  // Who sent the message
 
     if (instruction == "001") {  // Recibi orden de guardar el dato, mandar ack y medir el mio y mandarlo
       float lux = 1; // Mido mis lux
       if (Kmatrix[row][recievedId] == 99.00){
-          //Kmatrix[row][recievedId] = message;  // Almaceno en la matriz
-          //Serial.println("The matrix is now ");
-          printMatrix(Kmatrix);
+          Kmatrix[row][recievedId] = message;  // Almaceno en la matriz
+          //Serial.println("Saved matrix ");
+          //printMatrix(Kmatrix);
       }
       if (current_time - last_send_time >= write_delay) { // Check if it's time to send a message
       SendData(node_address, lux, recievedId, '1', '1', '1');  // Mando confirmacion de que ya lo guarde
@@ -201,7 +198,7 @@ void recieveData(bool *allfinished, bool *ack, bool *off, int *ids, int myId, in
 
     else if (instruction == "111") {
       if (recievedId == myId) {  // Check if the ack message is to me
-        Serial.println("He was answering to me ");
+        //Serial.println("He was answering to me ");
         if (isNumberNotInList(NodesWhoAck, sender)) {  // Check if the node that sent the message is new and save it on the list
           Serial.println("He had not answered to me before ");
           NodesWhoAck[*ids] = sender;
@@ -209,7 +206,7 @@ void recieveData(bool *allfinished, bool *ack, bool *off, int *ids, int myId, in
           Serial.println(*ids);
         }
         else {
-        Serial.println("He was already in the list ");
+        //Serial.println("He was already in the list ");
         }
         if (*ids == 2) {  // 2 when all can bus are working CHANGE
           Serial.println("Acknowledgment done ");
@@ -250,14 +247,14 @@ bool WaitForReception(uint8_t myaddress, float lux, int myId, bool allfinished, 
   
   while (!allfinished) {
     unsigned long current_time = millis(); // Get the current time
-    
+    //Serial.println("State: waiting for finished");
     if (!ack) {
       if (current_time - last_send_time >= write_delay) { // Check if it's time to send a message
       SendData(myaddress, lux, myId, '0', '0', '1'); // Send message to request acknowledgment
       last_send_time = current_time; // Update the last send time
       }
       recieveData(&allfinished, &ack, &off, &ids, myId, row, ledsprendidos); // Process received data
-      Serial.println("State: waiting for ack");
+      //Serial.println("State: waiting for ack");
     }
     else { // Check if it's time to send a message
     if (current_time - last_send_time >= write_delay) { // Check if it's time to send a message
@@ -334,9 +331,10 @@ void Calibrate(int myId, uint8_t myaddress) {
         allfinished = WaitForReception(myaddress, lux, myId, false, false, 0, &ledsprendidos);
         
         if (allfinished) {
-           Serial.println("Voa esperar que alguien apague un led");
+           
            off = false;
            ids = 0;
+           int i =0;
            unsigned long last_send_time = 0; // Variable to track the time of the last message sent
            while (!off) {
             unsigned long current_time = millis(); // Get the current time
@@ -344,7 +342,7 @@ void Calibrate(int myId, uint8_t myaddress) {
               SendData(myaddress, 1, myId, '2', '2', '2'); // To make sre that everybody reaches the all finished
               last_send_time = current_time; // Update the last send time
               }         
-           recieveData(&allfinished, &ack, &off, &ids, myId, row, &ledsprendidos);  // Save what the others meassured
+            recieveData(&allfinished, &ack, &off, &ids, myId, row, &ledsprendidos);  // Save what the others meassured
            }
            ledsprendidos += 1;
            allfinished = false;
@@ -352,6 +350,18 @@ void Calibrate(int myId, uint8_t myaddress) {
         row += 1;
       }
     }
+  }        
+  unsigned long last_send_time = 0; // Variable to track the time of the last message sent
+  int i =0;
+  while(i<5){  
+  unsigned long current_time = millis(); // Get the current time
+  if (current_time - last_send_time >= write_delay) { // Check if it's time to send a message
+  SendData(myaddress, 1, myId, '2', '2', '2'); // To make sre that everybody reaches the all finished
+  last_send_time = current_time; // Update the last send time
+  i = i+1;
+  printMatrix(Kmatrix);
+  Serial.println("FINISHED");
+  }
   }
 }
 
@@ -360,11 +370,8 @@ bool wakeup(bool wakingup) {
   unsigned long last_send_time = 0; // Variable to track the time of the last message sent
   while (wakingup) {            // Wait for all the addresses to contact each other
   unsigned long current_time = millis(); // Get the current time
-    if (current_time - last_send_time >= write_delay) { // Check if it's time to send a message
-      
+    
       SendData(node_address, 1, 1, '0', '0', '0');
-      last_send_time = current_time; // Update the last send time
-              }         
            
     if (data_available) {  // If there are messages, read them
       Serial.print("I recieved a message from ");
