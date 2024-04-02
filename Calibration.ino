@@ -1,6 +1,6 @@
 #include "can.h"
 #include "mcp2515.h"
-#include <hardware/flash.h>  //for flash_get_unique_id
+#include <hardware/flash.h>  
 
 uint8_t this_pico_flash_id[8], node_address;
 struct can_frame canMsgTx, canMsgRx;
@@ -57,6 +57,9 @@ uint8_t NodesWhoAck[] = {};
 int acks = 0;
 int ownack = 0;
 
+// Contains the gains of all the leds
+// Row 0 is O_i
+// Rows 1,2,3 contain the K of the others of the calibration
 float Kmatrix[4][3] = {
   { 99, 99, 99 },
   { 99, 99, 99 },
@@ -92,11 +95,7 @@ void setup() {
   time_to_write = millis() + write_delay;
 }
 
-void Ranking(uint8_t arr[]) {  // Make a ranking of the list
-  //    Serial.print("The first element in the list is ");
-  //    Serial.println(arr[0]);
-  //    Serial.print("The second element in the list is ");
-  //    Serial.println(arr[1]);
+void Ranking(uint8_t arr[]) {  // Make a ranking of the list of devices identified
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 2 - i; j++) {
       if (arr[j] < arr[j + 1]) {
@@ -107,18 +106,12 @@ void Ranking(uint8_t arr[]) {  // Make a ranking of the list
       }
     }
   }
-  //Serial.println("I finished organizing ");
-  //Serial.print("The first element in the list is ");
-  //    Serial.println(arr[0]);
-  //Serial.print("The second element in the list is ");
-  //    Serial.println(arr[1]);
 }
 
 
 bool isNumberNotInList(uint8_t arr[], uint8_t number) {  // Check if the id has not been recieved before
   for (int i = 0; i < 3; i++) {
     if (arr[i] == number) {
-      // Number is found in the list, return false
       return false;
     }
   }
@@ -127,7 +120,7 @@ bool isNumberNotInList(uint8_t arr[], uint8_t number) {  // Check if the id has 
 }
 
 
-int findPosition(uint8_t arr[], uint8_t target) {  // Find my indice in the list of ids
+int findPosition(uint8_t arr[], uint8_t target) {  // Find my index in the list of ids
   for (int i = 0; i < 3; i++) {
     if (arr[i] == target) {
       // Return the position (index) if the target is found
@@ -166,7 +159,7 @@ void recieveData(bool *ackLED, bool *allfinished, bool *ack, bool *off, int *ids
   unsigned long last_send_time = 0;  // Variable to track the time of the last message sent
   if (data_available) {
     unsigned long current_time = millis();  // Get the current time
-    checkCanError();
+    checkCanError(); //Flush the buffer in case it is full
     can0.readMessage(&canMsgRx);
     String instruction = String(char(canMsgRx.data[5])) + String(char(canMsgRx.data[6])) + String(char(canMsgRx.data[7]));
     uint8_t recievedId = canMsgRx.data[4];  // Define the indice of the martrix for this node
@@ -183,20 +176,20 @@ void recieveData(bool *ackLED, bool *allfinished, bool *ack, bool *off, int *ids
     //Serial.println(instruction);
     uint8_t sender = canMsgRx.can_id;  // Who sent the message
 
-    if (instruction == "001") {  // Recibi orden de guardar el dato, mandar ack y medir el mio y mandarlo
-      float lux = 1;  // Mido mis lux
-      if (Kmatrix[row][recievedId] == 99.00) {
-        Kmatrix[row][recievedId] = message;  // Almaceno en la matriz
+    if (instruction == "001") {  // Recieved the order of saving the data of someone else, send ack to that node, meassure my data and send it 
+      float lux = 1;  // Meassure mine ADD READ MY LUX
+      if (Kmatrix[row][recievedId] == 99.00) { // Check if I had saved that position before
+        Kmatrix[row][recievedId] = message;  // Save in the matrix
         }
       if (current_time - last_send_time >= small_write_delay) {  // Check if it's time to send a message
         Serial.println(" I will send that node the ack that I saved his data ");
-        SendData(node_address, lux, recievedId, '1', '1', '1');  // Mando confirmacion de que ya lo guarde
+        SendData(node_address, lux, recievedId, '1', '1', '1');  // Confirm that I saved the message
         last_send_time = current_time;                           // Update the last send time
       }
 
     }
 
-    else if ((instruction == "111") && (!*ack)) {
+    else if ((instruction == "111") && (!*ack)) { // Someone acknowledged me and I have not finished ack
       if (recievedId == myId) {  // Check if the ack message is to me
         //Serial.println("He was answering to me ");
         if (isNumberNotInList(NodesWhoAck, sender)) {  // Check if the node that sent the message is new and save it on the list
@@ -205,7 +198,7 @@ void recieveData(bool *ackLED, bool *allfinished, bool *ack, bool *off, int *ids
           *ids = *ids + 1;
         }
 
-        if (*ids == 2)  {  // 2 when all can bus are working CHANGE
+        if (*ids == 2)  {  // 2 when all can bus are working
           Serial.println("Acknowledgment was done ");
           *ack = true;  // If I recieved confirmation that all nodes saved my data, I can continue
           *ids = 0;
@@ -213,44 +206,44 @@ void recieveData(bool *ackLED, bool *allfinished, bool *ack, bool *off, int *ids
       }
     }
 
-    else if ((instruction == "222") && (*ack)) {         // System acknowldege, everybody saved all the data      if (isNumberNotInList(NodesWhoAck, recievedId)) {  // Check if the node that sent the message is new and save it on the list
+    else if ((instruction == "222") && (*ack)) {    // Someone says they finished and I all ready finished ack
       if (isNumberNotInList(finishedIds, recievedId)) {  // Check if the node that sent the message is new and save it on the list
         Serial.println("Someone new announced he finished ");
         finishedIds[finished] = recievedId;
         finished = finished + 1;
       }
       if (finished == 2) {
-        *allfinished = true;  // If I recieved data from two different nodes, I can continue   2 CHANGE
+        *allfinished = true;  // If I recieved data from two different nodes, I can continue   
         Serial.println("All finished saving the data");
         finished = 0;
       }
     }
 
-    else if ((instruction == "003") && (*allfinished)) {  // Someone turned off the led
-      Serial.println("Alguien apago el led");
-      if (*off == false) ledsprendidos += 1;
+    else if ((instruction == "003") && (*allfinished)) {  // Someone turned off the led and I am sure that everybody finished
+      Serial.println("Someone turned off a led");
+      if (*off == false) ledsprendidos += 1; // ledsprendidos 
       if (current_time - last_send_time >= small_write_delay) {  // Check if it's time to send a message
-        Serial.println(" I am confirming now I now someone turned off the led ");
-        SendData(node_address, 1, myId, '3', '3', '3');  // Mando confirmacion de que ya lo guarde
-        last_send_time = current_time;                           // Update the last send time
+        Serial.println(" I am confirming that now I now someone turned off the led ");
+        SendData(node_address, 1, myId, '3', '3', '3');  // I confirme that I now someone turned off a led, 
+        last_send_time = current_time;                    
       }
       *off = true;
     } 
 
-    else if (instruction == "333") {  // Someone Acknowledged I turned off the led
+    else if (instruction == "333") {  // Someone acknowledged I turned off the led
         if (isNumberNotInList(NodesWhoAck, sender)) {  // Check if the node that sent the message is new and save it on the list
           Serial.println(" Someone new knows someone turned off the led");
           NodesWhoAck[*ids] = sender;
           *ids = *ids + 1;
         }
-        if (*ids == 2) {  // 2 when all can bus are working CHANGE
+        if (*ids == 2) {  // 
           Serial.println("Everyone knows I turned off the led ");
-          *ackLED = true;  // If I recieved confirmation that all nodes saved my data, I can continue
+          *ackLED = true;  // AckLED says if everyone confirme that they now a led was turned off
           *ids = 0;
       }
       }
     
-    else if (instruction == "444") {  // Someone turned off the led
+    else if (instruction == "444") {  
       Serial.println("SOME ONE FINISHED ALL");
     }
 
@@ -265,9 +258,8 @@ bool WaitForReception(uint8_t myaddress, float lux, int myId, bool allfinished, 
   ack = false;
   unsigned long last_send_time = 0;  // Variable to track the time of the last message sent
   ownack = 0;
-  while (!allfinished) {
+  while (!allfinished) { 
     unsigned long current_time = millis();  // Get the current time
-    //Serial.println("State: waiting for finished");
     if (!ack) {
       if (current_time - last_send_time >= write_delay) {  // Check if it's time to send a message
         Serial.println(" I am sending nodes my data");
@@ -294,16 +286,15 @@ bool WaitForReception(uint8_t myaddress, float lux, int myId, bool allfinished, 
 void Calibrate(int myId, uint8_t myaddress) {
   data_available = true;
   bool allfinished = false;
-  while (row < 4) {  //4 cuando todos estan funcionando CHANGE
+  while (row < 4) {  
     // Everybody reads the 0 pwm meassurement
     Serial.print("Current row is ");
     Serial.println(row);
     if (row == 0) {              // First meassurement
-      float lux = row + myId;    // Meassure the current lux in the node
-      Kmatrix[row][myId] = lux;  // Almaceno en la matriz
-      // I tell everyone to save my data
+      float lux = row + myId;    // MEASSURE the current lux in the node 
+      Kmatrix[row][myId] = lux;  // Save my date
+      // I tell everyone to save my data and wait for all finished to be true
       allfinished = WaitForReception(myaddress, lux, myId, false, false, 0, &ledsprendidos);
-
       if (allfinished) {
         Serial.println(" Since everybody finished, I add one row");
         allfinished = false;
@@ -315,15 +306,15 @@ void Calibrate(int myId, uint8_t myaddress) {
       Serial.print("Ahora leds encendidos es ");
       Serial.println(ledsprendidos);
 
-      if (myId == ledsprendidos) {
-
-        Serial.println("Es mi turno de encender el LED");  //It is my turn to turn on the led
+      if (myId == ledsprendidos) { // My turn to turn on the ledsss
+        Serial.println("My turn to turn on LED");  //It is my turn to turn on the led
         // Turn on led
-        float lux = row + myId;
+        float lux = row + myId; // MEASSURE
         Kmatrix[row][myId] = lux;  // Almaceno en la matriz
         resetArray(NodesWhoAck, 9);
         resetArray(finishedIds, 9);
         allfinished = false;
+        // I tell everyone to save my data and wait for all finished to be true
         allfinished = WaitForReception(myaddress, lux, myId, false, false, 0, &ledsprendidos);
 
         // When everyone finishes meassuring and saving data, turn of the led and start again with another one
@@ -336,12 +327,11 @@ void Calibrate(int myId, uint8_t myaddress) {
           ackLED = false;
           unsigned long last_send_time = 0;  // Variable to track the time of the last message sent
           resetArray(NodesWhoAck, 9);
-          while (!ackLED) {
-            unsigned long current_time = millis();               // Get the current time
-            if (current_time - last_send_time >= write_delay) {  // Check if it's time to send a message
+          while (!ackLED) {  // While people dont know I turned off the led
+            unsigned long current_time = millis();               
+            if (current_time - last_send_time >= write_delay) {  
               SendData(myaddress, 1, myId, '0', '0', '3');       // Tell everyone that a led was turned off
-              last_send_time = current_time;                     // Update the last send time
-              i = i + 1;
+              last_send_time = current_time;                    
             }
             recieveData(&ackLED, &allfinished, &ack, &off, &ids, myId, row, &ledsprendidos, &ownack);  // Save what the others meassured
           }
@@ -350,29 +340,28 @@ void Calibrate(int myId, uint8_t myaddress) {
           allfinished = false;
         }
 
-      } else {
-        // Meassure
-        float lux = row + myId;
-        Kmatrix[row][myId] = lux;  // Almaceno en la matriz
+      } 
+      
+      else { // It is not my turn to turn on the led
+        float lux = row + myId;    // MEASSURE
+        Kmatrix[row][myId] = lux;  // Save my meassure in the matrix
         resetArray(NodesWhoAck, 9);
         resetArray(finishedIds, 9);
         allfinished = WaitForReception(myaddress, lux, myId, false, false, 0, &ledsprendidos);
 
         if (allfinished) {
-          Serial.println(" Everyone saved the data, I am watinig for the led sign to go off");
+          Serial.println(" Everyone saved the data, I am waiting for the led sign to go off");
           off = false;
           ids = 0;
           int i = 0;
           unsigned long last_send_time = 0;  // Variable to track the time of the last message sent
-          while (!off) {
-            Serial.println(" The led is still on, I will send 222 ");
+          while (!off) { //While the led sign is off, I keep telling everyone that I finished saving the data
             unsigned long current_time = millis();               // Get the current time
             if (current_time - last_send_time >= write_delay) {  // Check if it's time to send a message
-              Serial.println(" I am sending 222 ");
               SendData(myaddress, 1, myId, '2', '2', '2');       // To make sre that everybody reaches the all finished
               last_send_time = current_time;                     // Update the last send time
             }
-            recieveData(&ackLED,&allfinished, &ack, &off, &ids, myId, row, &ledsprendidos, &ownack);  // Save what the others meassured
+            recieveData(&ackLED,&allfinished, &ack, &off, &ids, myId, row, &ledsprendidos, &ownack);  
           }
           ledsprendidos += 1;
           allfinished = false;
@@ -383,7 +372,7 @@ void Calibrate(int myId, uint8_t myaddress) {
   }
   unsigned long last_send_time = 0;  // Variable to track the time of the last message sent
   int i = 0;
-  while (i < 15) {
+  while (i < 15) {  // I send the finished message 15 times to make sre that everybody reaches the all finished
     unsigned long current_time = millis();               // Get the current time
     if (current_time - last_send_time >= write_delay) {  // Check if it's time to send a message
       SendData(myaddress, 1, myId, '2', '2', '2');       // To make sre that everybody reaches the all finished
@@ -444,7 +433,7 @@ void loop() {
   }
   if (millis() >= time_to_write) {
     SendData(node_address, 1, 1, '3', '3', '3');  // To make sre that everybody reaches the all finished
-    Serial.println("I am letting every body know I finished alllllll");
+    Serial.println("I am letting every body know I finished alll");
     // Wakeup function calls calibrate inside itself
     time_to_write = millis() + write_delay;
   }
